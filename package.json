@@ -1,0 +1,51 @@
+{
+  "name": "bun-api-modular",
+  "version": "1.0.0",
+  "description": "Strict Modular REST API Generator for Bun + Elysia",
+  "license": "MIT",
+  "author": "firzaelbuho",
+  "type": "module",
+
+  "module": "dist/cli.js",
+  "bin": {
+    "bun-api-modular": "./dist/cli.js"
+  },
+
+  "files": [
+    "dist",
+    "package.json",
+    "README.md",
+    "LICENSE"
+  ],
+
+  "keywords": [
+    "bun",
+    "elysia",
+    "rest",
+    "api",
+    "cli",
+    "generator",
+    "modular",
+    "architecture"
+  ],
+
+  "scripts": {
+    "build": "bun build ./src/cli.ts --outfile ./dist/cli.js --target node",
+    "dev": "bun run src/cli.ts",
+    "prepublishOnly": "bun run build"
+  },
+
+  "dependencies": {
+    "commander": "^11.0.0",
+    "picocolors": "^1.0.0"
+  },
+
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/node": "^20.0.0"
+  },
+
+  "peerDependencies": {
+    "typescript": "^5.0.0"
+  }
+}
