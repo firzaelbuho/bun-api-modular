@@ -3,7 +3,6 @@ import { pluralize } from "../utils/pluralize";
 import { registerRoute } from "../utils/registry";
 import { trackModule } from "../utils/tracking";
 
-
 export function runCreate(
   modulePath: string,
   opts: {
@@ -16,6 +15,7 @@ export function runCreate(
   const name = parts.at(-1)!;
   const plural = opts.route ?? pluralize(name);
   const routeFile = plural.replace(/\//g, "-");
+  const TypeName = capitalize(name);
 
   /* -----------------------------
    * Module structure
@@ -23,9 +23,10 @@ export function runCreate(
   const moduleDir = `src/modules/${modulePath}`;
   ensureDir(moduleDir, opts);
 
+  // types.ts
   writeFileSafe(
     `${moduleDir}/types.ts`,
-    `export type ${capitalize(name)} = {
+    `export type ${TypeName} = {
   id: string;
   name: string;
   description?: string;
@@ -36,45 +37,59 @@ export function runCreate(
     opts
   );
 
+  // values.ts
   writeFileSafe(
     `${moduleDir}/values.ts`,
-    `import type { ${capitalize(name)} } from "./types";
+    `import type { ${TypeName} } from "./types";
 
-export const DATA: ${capitalize(name)}[] = [];
+export const DATA: ${TypeName}[] = [
+  {
+    id: "1",
+    name: "Sample ${TypeName}",
+    description: "Dummy data",
+    age: 20,
+    gender: "male"
+  }
+];
 `,
     opts
   );
 
+  // services.ts
   writeFileSafe(
-    `${moduleDir}/service.ts`,
+    `${moduleDir}/services.ts`,
     `import { DATA } from "./values";
-import type { ${capitalize(name)} } from "./types";
+import type { ${TypeName} } from "./types";
 
 export function getAll(query?: { s?: string; gender?: string }) {
-  let data = [...DATA];
+  let result = [...DATA];
 
   if (query?.s) {
     const q = query.s.toLowerCase();
-    data = data.filter(d => d.name.toLowerCase().includes(q));
+    result = result.filter(d =>
+      d.name.toLowerCase().includes(q)
+    );
   }
 
   if (query?.gender) {
-    data = data.filter(d => d.gender === query.gender);
+    result = result.filter(d =>
+      d.gender === query.gender
+    );
   }
 
-  return data;
+  return result;
 }
 
-export function getById(id: string) {
+export function getById(id: string): ${TypeName} | null {
   return DATA.find(d => d.id === id) ?? null;
 }
 
-export function create(payload: ${capitalize(name)}) {
+export function create(payload: ${TypeName}) {
   DATA.push(payload);
   return payload;
 }
 
-export function update(id: string, payload: Partial<${capitalize(name)}>) {
+export function update(id: string, payload: Partial<${TypeName}>) {
   const item = getById(id);
   if (!item) return null;
   Object.assign(item, payload);
@@ -92,46 +107,110 @@ export function remove(id: string) {
   );
 
   /* -----------------------------
-   * Route file
+   * Route file (ROOT LEVEL)
    * ----------------------------- */
   writeFileSafe(
-    `src/routes/api/${routeFile}.ts`,
+    `src/routes/${routeFile}.ts`,
     `import { Elysia } from "elysia";
-import * as svc from "@/modules/${modulePath}/service";
-import { ok, fail } from "@/shared/response";
-import { badRequest, notFound } from "@/shared/errors";
+import * as services from "../modules/${modulePath}/services";
+import { ok, fail } from "../shared/response";
+import { badRequest, notFound } from "../shared/errors";
 
 export const ${plural}Route = new Elysia({ prefix: "/${plural}" })
 
-  .get("/", ({ query }) => ok(svc.getAll(query)))
+  .get("/", ({ query }) => {
+    return ok(services.getAll(query));
+  })
 
   .get("/:id", ({ params }) => {
-    const data = svc.getById(params.id);
+    const data = services.getById(params.id);
     if (!data) {
-      const err = notFound("${name.toUpperCase()}_NOT_FOUND", "${capitalize(name)} not found");
-      return new Response(JSON.stringify(fail(err.code, err.message)), { status: err.status });
+      const err = notFound(
+        "${name.toUpperCase()}_NOT_FOUND",
+        "${TypeName} not found"
+      );
+      return new Response(
+        JSON.stringify(fail(err.code, err.message)),
+        { status: err.status }
+      );
     }
     return ok(data);
+  })
+
+  .post("/", ({ body }) => {
+    if (!body?.id || !body?.name) {
+      const err = badRequest(
+        "INVALID_${name.toUpperCase()}_PAYLOAD",
+        "Invalid payload"
+      );
+      return new Response(
+        JSON.stringify(fail(err.code, err.message)),
+        { status: err.status }
+      );
+    }
+    return ok(services.create(body));
+  })
+
+  .put("/:id", ({ params, body }) => {
+    const updated = services.update(params.id, body);
+    if (!updated) {
+      const err = notFound(
+        "${name.toUpperCase()}_NOT_FOUND",
+        "${TypeName} not found"
+      );
+      return new Response(
+        JSON.stringify(fail(err.code, err.message)),
+        { status: err.status }
+      );
+    }
+    return ok(updated);
+  })
+
+  .delete("/:id", ({ params }) => {
+    const removed = services.remove(params.id);
+    if (!removed) {
+      const err = notFound(
+        "${name.toUpperCase()}_NOT_FOUND",
+        "${TypeName} not found"
+      );
+      return new Response(
+        JSON.stringify(fail(err.code, err.message)),
+        { status: err.status }
+      );
+    }
+    return ok(true);
   });
 `,
     opts
   );
 
   /* -----------------------------
-   * Spec
+   * spec.md
    * ----------------------------- */
   writeFileSafe(
     `${moduleDir}/spec.md`,
-    `# ${capitalize(plural)} API
+    `# ${TypeName} API
 
 Base path: \`/${plural}\`
 
 ## GET /${plural}
 Query:
-- s (search by name)
-- gender
+- s (string)
+- gender (male | female)
 
 ## GET /${plural}/:id
+Errors:
+- 404 ${name.toUpperCase()}_NOT_FOUND
+
+## POST /${plural}
+Errors:
+- 400 INVALID_${name.toUpperCase()}_PAYLOAD
+
+## PUT /${plural}/:id
+Errors:
+- 404 ${name.toUpperCase()}_NOT_FOUND
+
+## DELETE /${plural}/:id
 Errors:
 - 404 ${name.toUpperCase()}_NOT_FOUND
 `,

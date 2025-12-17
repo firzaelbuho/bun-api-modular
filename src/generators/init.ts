@@ -1,10 +1,4 @@
-import fs from "fs";
-import path from "path";
 import { ensureDir, writeFileSafe } from "../utils/fs";
-import { registerRoute } from "../utils/registry";
-import { trackModule } from "../utils/tracking";
-
-
 
 export function runInit(opts: {
   force?: boolean;
@@ -15,7 +9,7 @@ export function runInit(opts: {
   /* -----------------------------
    * Base structure
    * ----------------------------- */
-  ensureDir(`${SRC}/routes/api`, opts);
+  ensureDir(`${SRC}/routes`, opts);
   ensureDir(`${SRC}/modules`, opts);
   ensureDir(`${SRC}/shared`, opts);
 
@@ -28,7 +22,10 @@ export function runInit(opts: {
 import { routes } from "./routes";
 
 export const app = new Elysia();
-routes.forEach((route) => app.use(route));
+
+routes.forEach((route) => {
+  app.use(route);
+});
 `,
     opts
   );
@@ -40,29 +37,42 @@ routes.forEach((route) => app.use(route));
     `${SRC}/server.ts`,
     `import { app } from "./app";
 
-app.listen(3000);
-console.log("🚀 API running at http://localhost:3000");
+const PORT = process.env.PORT ?? 3000;
+
+app.listen(PORT);
+console.log("🚀 API running at http://localhost:" + PORT);
 `,
     opts
   );
 
   /* -----------------------------
-   * Route registries
+   * Route registry
    * ----------------------------- */
   writeFileSafe(
     `${SRC}/routes/index.ts`,
-    `import { apiRoutes } from "./api";
+    `import { rootRoute } from "./root";
 
 export const routes = [
-  ...apiRoutes
+  rootRoute
 ];
 `,
     opts
   );
 
+  /* -----------------------------
+   * Root route (health check)
+   * ----------------------------- */
   writeFileSafe(
-    `${SRC}/routes/api/index.ts`,
-    `export const apiRoutes = [];
+    `${SRC}/routes/root.ts`,
+    `import { Elysia } from "elysia";
+
+export const rootRoute = new Elysia()
+  .get("/", () => {
+    return {
+      success: true,
+      message: "bun-api-modular running"
+    };
+  });
 `,
     opts
   );
@@ -90,7 +100,10 @@ export function ok<T>(data: T): ApiSuccess<T> {
 }
 
 export function fail(code: string, message: string): ApiError {
-  return { success: false, error: { code, message } };
+  return {
+    success: false,
+    error: { code, message }
+  };
 }
 `,
     opts
@@ -108,10 +121,4 @@ export function notFound(code: string, message: string) {
 `,
     opts
   );
-
-  /* -----------------------------
-   * Auto-create test module
-   * ----------------------------- */
-  registerRoute("tests", "testsRoute", opts);
-  trackModule("test", "test", "/tests", "init", opts);
 }
